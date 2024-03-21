@@ -1,0 +1,133 @@
+
+Sub GenerateGRNs()
+    On Error GoTo ErrorHandler
+    
+    Dim deliveryWb As Workbook
+    Dim grnWb As Workbook
+    Dim deliverySheet As Worksheet
+    Dim grnSheet As Worksheet
+    Dim templateSheet As Worksheet
+    Dim lastRow As Long
+    Dim i As Long
+    Dim shipmentNumber As String
+    Dim grnnumber As String
+    Dim POnumber As String
+    Dim grnDict As Object ' Dictionary to store GRN data
+    Dim rowData As Collection
+    
+    ' Set up dictionary
+    Set grnDict = CreateObject("Scripting.Dictionary")
+    
+    ' Open the delivery details workbook
+    Set deliveryWb = Workbooks.Open("C:\Users\Anjana Marsinghe\OneDrive - University of Moratuwa\Documents\Intern\Docs\GRN automation\Production sheet 2024.xlsx")
+    Set deliverySheet = deliveryWb.Sheets(2) ' Assuming data is on the second sheet
+    
+    ' Open the GRN template workbook
+    Set grnWb = Workbooks.Open("C:\Users\Anjana Marsinghe\OneDrive - University of Moratuwa\Documents\Intern\Docs\GRN automation\Template excel.xlsx")
+    Set templateSheet = grnWb.Sheets("Template") ' Assuming template is on a sheet named "Template"
+    
+    'Prompt the user to enter the range of rows for GRN generation
+    Dim startRow As Long
+    Dim endRow As Long
+    startRow = InputBox("Enter the Starting row number:")
+    endRow = InputBox("Enter the ending row number:")
+    
+    ' Find the shipment number within the specified range of rows
+    shipmentNumber = FindShipmentNumber(deliverySheet, startRow, endRow)
+    
+   ' Loop through each row in the delivery details
+    For i = startRow To endRow ' Assuming the headers are in the first row
+        ' Get the GRN number
+        grnnumber = deliverySheet.Cells(i, "F").Value ' Assuming GRN number is in column F
+    
+        ' Check if GRN number already exists in dictionary
+        If Not grnDict.Exists(grnnumber) Then
+            ' If it doesn't exist, create a new collection to store row data
+            Set rowData = New Collection
+            ' Add the data to the collection
+            On Error Resume Next
+            rowData.Add deliverySheet.Cells(i, "I").Value ' Assuming data to update to date
+            rowData.Add "PO" & Format(deliverySheet.Cells(i, "G").Value, "00000000") 'PO number
+            rowData.Add deliverySheet.Cells(i, "H").Value ' Price
+            rowData.Add deliverySheet.Cells(i, "D").Value ' Quantity
+            rowData.Add deliverySheet.Cells(i, "A").Value ' Supplier
+            rowData.Add deliverySheet.Cells(i, "E").Value ' Dispatch
+            On Error GoTo 0
+        
+            ' Check for errors
+            If Err.Number <> 0 Then
+                MsgBox "Error adding data to collection: " & Err.Description, vbExclamation
+                Err.Clear
+            Else
+                ' Add the collection to the dictionary
+                grnDict.Add grnnumber, rowData
+            End If
+        End If
+    Next i
+    
+    ' Loop through each unique GRN number in the dictionary
+    For Each Key In grnDict.Keys
+        Dim errorplace As String
+        errorplace = Key
+        Debug.Print "Processing GRN Number: " & errorplace
+        ' Copy the template sheet
+        templateSheet.Copy After:=grnWb.Sheets(grnWb.Sheets.Count)
+        Set grnSheet = grnWb.Sheets(grnWb.Sheets.Count)
+        
+        ' Rename the copied sheet to the GRN number
+        grnSheet.Name = "RC" & Format(Key, "00000000")
+        
+        ' Update relevant cells with delivery details
+        grnSheet.Range("O20").Value = "RC" & Format(Key, "00000000") ' Assuming GRN number is in column A
+        grnSheet.Range("O13").Value = grnDict(Key)(1) ' Assuming data to update to date
+        grnSheet.Range("O14").Value = grnDict(Key)(2) ' PO number
+        grnSheet.Range("O16").Value = grnDict(Key)(3) ' Price
+        grnSheet.Range("O17").Value = grnDict(Key)(4) ' Quantity
+        grnSheet.Range("B7:F8").Value = grnDict(Key)(5) ' Supplier
+        grnSheet.Range("B9:F10").Value = grnDict(Key)(5) ' Dispatch
+        
+        ' Additional data processing can be done here based on other items in the collection
+        
+    Next Key
+    
+    ' Delete the template sheet
+    grnWb.Sheets("Template").Delete
+    
+    ' Save and close the GRN workbook
+    grnWb.SaveAs "C:\Users\Anjana Marsinghe\OneDrive - University of Moratuwa\Documents\Intern\Docs\GRN automation\Output\" & shipmentNumber & ".xlsx"
+    grnWb.Close False
+    
+    ' Close the delivery details workbook
+    deliveryWb.Close False
+    
+    MsgBox "GRNs generated successfully.", vbInformation
+
+Exit Sub
+
+ErrorHandler:
+    MsgBox "Error: " & Err.Description, vbExclamation
+    On Error Resume Next
+    deliveryWb.Close False
+    grnWb.Close False
+End Sub
+
+Function FindShipmentNumber(ws As Worksheet, startRow As Long, endRow As Long) As String
+    Dim i As Long
+    
+    ' Loop through each row in the specified range
+    For i = startRow To endRow
+        ' Check if the cell in column K is merged
+        If ws.Cells(i, "K").MergeCells Then
+            ' Store the merged range containing the shipment number
+            Dim mergedRange As Range
+            Set mergedRange = ws.Cells(i, "K").MergeArea
+            ' Extract the shipment number from the first cell in the merged range
+            shipmentNumber = Split(mergedRange.Cells(1).Text)(0)
+            FindShipmentNumber = Replace(shipmentNumber, "/", "-")
+            Exit Function
+        End If
+    Next i
+    
+    ' If the shipment number is not found, return an empty string
+    FindShipmentNumber = ""
+End Function
